@@ -1,0 +1,217 @@
+#!/usr/bin/python3
+
+# Copyright (c) 2022 Seagate Technology LLC and/or its Affiliates
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published
+# by the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU Affero General Public License for more details.
+# You should have received a copy of the GNU Affero General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+# For any questions about this software or licensing,
+# please email opensource@seagate.com or cortx-questions@seagate.com.
+
+import os
+import sys
+import errno
+import traceback
+
+from cortx.utils.log import Log
+from cortx.utils.cmd_framework import Cmd
+from cortx.utils.conf_store import Conf, MappedConf
+from src.setup.rgw import Rgw
+from src.setup.error import SetupError
+from src.const import SERVICE_NAME, LOG_PATH_KEY
+
+class SetupCmdBase(Cmd):
+    """Setup cmd base class."""
+
+    def __init__(self, args):
+        """Initialize super class members."""
+        super().__init__(args)
+        config_url = args.config
+        self._conf = MappedConf(config_url)
+
+    def add_args(parser):
+        parser.add_argument('--services', default='services', help='services')
+        parser.add_argument('-c', '--config', default='config_url', help='config')
+        parser.add_argument('--index', default='1', help='service sequence index')
+
+    def _initialize_logging(self, conf: MappedConf):
+        """Initialize Logging."""
+        log_path = conf.get(LOG_PATH_KEY)
+        if log_path is None:
+            raise SetupError(errno.EINVAL, 'Log path is None.')
+        rgw_log_path = os.path.join(log_path, 'rgw', Conf.machine_id)
+        os.makedirs(rgw_log_path, exist_ok=True)
+        Log.init(SERVICE_NAME, rgw_log_path, console_output=True)
+
+
+class PostInstallCmd(SetupCmdBase):
+    """PostInstall Setup Cmd."""
+
+    name = 'post_install'
+
+    def __init__(self, args: dict):
+        """Initialize super class members."""
+        super().__init__(args)
+
+    def process(self):
+        self._initialize_logging(self._conf)
+        Rgw.validate('post_install')
+        rc = Rgw.post_install(self._conf)
+        return rc
+
+
+class PrepareCmd(SetupCmdBase):
+    """Prepare Setup Cmd."""
+    name = 'prepare'
+
+    def __init__(self, args: dict):
+        """Initialize super class members."""
+        super().__init__(args)
+
+    def process(self):
+        self._initialize_logging(self._conf)
+        Rgw.validate('prepare')
+        rc = Rgw.prepare(self._conf)
+        return rc
+
+
+class ConfigCmd(SetupCmdBase):
+    """Setup Config Cmd."""
+    name = 'config'
+
+    def __init__(self, args):
+        """Initialize super class members."""
+        super().__init__(args)
+
+    def process(self):
+        self._initialize_logging(self._conf)
+        Rgw.validate('config')
+        rc = Rgw.config(self._conf)
+        return rc
+
+
+class InitCmd(SetupCmdBase):
+    """Init Setup Cmd."""
+    name = 'init'
+
+    def __init__(self, args):
+        """Initialize super class members."""
+        super().__init__(args)
+
+    def process(self):
+        self._initialize_logging(self._conf)
+        Rgw.validate('init')
+        rc = Rgw.init(self._conf)
+        return rc
+
+
+class StartCmd(SetupCmdBase):
+    """Start Setup Cmd."""
+    name = 'start'
+
+    def __init__(self, args):
+        """Initialize super class members."""
+        super().__init__(args)
+        self._index = args.index
+
+    def process(self):
+        self._initialize_logging(self._conf)
+        Rgw.validate('start')
+        rc = Rgw.start(self._conf, self._index)
+        return rc
+
+
+class TestCmd(SetupCmdBase):
+    """Test Setup Cmd."""
+    name = 'test'
+
+    def __init__(self, args):
+        """Initialize super class members."""
+        super().__init__(args)
+        # Default test_plan is 'sanity'
+        self.test_plan = args.plan
+
+    def process(self):
+        self._initialize_logging(self._conf)
+        Rgw.validate('test')
+        rc = Rgw.test(self._conf, self.test_plan)
+        return rc
+
+
+class ResetCmd(SetupCmdBase):
+    """Reset Setup Cmd."""
+    name = 'reset'
+
+    def __init__(self, args):
+        """ Initialize super class members."""
+        super().__init__(args)
+
+    def process(self):
+        self._initialize_logging(self._conf)
+        Rgw.validate('reset')
+        rc = Rgw.reset(self._conf)
+        return rc
+
+
+class CleanupCmd(SetupCmdBase):
+    """Cleanup Setup Cmd."""
+    name = 'cleanup'
+
+    def __init__(self, args: dict):
+        """Initialize super class members."""
+        super().__init__(args)
+
+    def process(self):
+        self._initialize_logging(self._conf)
+        Rgw.validate('cleanup')
+        rc = Rgw.cleanup(self._conf)
+        return rc
+
+
+class UpgradeCmd(SetupCmdBase):
+    """Upgrade Setup Cmd."""
+    name = 'upgrade'
+
+    def __init__(self, args: dict):
+        """Initialize super class members."""
+        super().__init__(args)
+
+    def process(self):
+        self._initialize_logging(self._conf)
+        Rgw.validate('upgrade')
+        rc = Rgw.upgrade(self._conf)
+        return rc
+
+
+def main():
+    argv = sys.argv
+
+    try:
+        desc = "CORTX Rgw Setup command"
+        command = Cmd.get_command(sys.modules[__name__], desc, argv[1:])
+        rc = command.process()
+
+    except SetupError as e:
+        sys.stderr.write("error: %s\n\n" % str(e))
+        sys.stderr.write("%s\n" % traceback.format_exc())
+        Log.error(f'Command {argv[1]} failed :{str(e)}')
+        rc = e.rc()
+
+    except Exception as e:
+        sys.stderr.write("error: %s\n\n" % str(e))
+        sys.stderr.write("%s\n" % traceback.format_exc())
+        Log.error(f'Command {argv[1]} failed :{str(e)}')
+        rc = errno.EINVAL
+
+    Log.info(f"Command {argv[1]} completed with rc:{rc}")
+    return rc
+
+
+if __name__ == '__main__':
+    sys.exit(main())
